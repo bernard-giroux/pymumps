@@ -172,9 +172,15 @@ class _MumpsBaseContext(object):
 
     def set_rhs(self, rhs):
         """Set the right hand side. This matrix will be modified in place."""
-        assert rhs.size == self.id.n
+        assert rhs.size == self.id.n or rhs.flags['F_CONTIGUOUS']
+        # if memory layout is 'F_CONTIGUOUS', we assume array is 2d
         self._refs.update(rhs=rhs)
         self.id.rhs = self.cast_array(rhs)
+        if rhs.ndim == 2:
+            self.id.nrhs = rhs.shape[1]
+        else:
+            self.id.nrhs = 1
+        self.id.lrhs = self.id.n
 
     def set_icntl(self, idx, val):
         """Set an icntl value.
