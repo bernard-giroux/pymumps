@@ -1,4 +1,5 @@
 import warnings
+import numpy as np
 
 __all__ = [
     'DMumpsContext',
@@ -79,8 +80,8 @@ class _MumpsBaseContext(object):
 
         Parameters
         ----------
-        A : `scipy.sparse.coo_matrix`
-            Sparse matrices of other formats will be converted to
+        A : `scipy.sparse.coo_matrix` or `scipy.sparse.coo_array`
+            Sparse matrices/arrays of other formats will be converted to
             COOrdinate form.
         """
         if self.myid != 0:
@@ -113,6 +114,8 @@ class _MumpsBaseContext(object):
         if self.myid != 0:
             return
         assert irn.size == jcn.size
+        irn = self._cast_index_array(irn)
+        jcn = self._cast_index_array(jcn)
         self._refs.update(irn=irn, jcn=jcn)
         self.id.nz = irn.size
         self.id.irn = self.cast_array(irn)
@@ -146,6 +149,8 @@ class _MumpsBaseContext(object):
         """
         assert irn_loc.size == jcn_loc.size
 
+        irn_loc = self._cast_index_array(irn_loc)
+        jcn_loc = self._cast_index_array(jcn_loc)
         self._refs.update(irn_loc=irn_loc, jcn_loc=jcn_loc)
         self.id.nz_loc = irn_loc.size
         self.id.irn_loc = self.cast_array(irn_loc)
@@ -290,6 +295,29 @@ class _MumpsBaseContext(object):
         and for holding a reference to the underlying array.
         """
         return arr.__array_interface__['data'][0]
+
+    @staticmethod
+    def _cast_index_array(arr):
+        """Return a contiguous 32-bit copy of an index array for MUMPS.
+
+        MUMPS_INT is a 32-bit C int, so row/column index arrays must be
+        int32. numpy/scipy often produce int64 indices (e.g. ``coo_array``),
+        whose raw memory MUMPS would misread as out-of-range indices and
+        silently ignore, yielding a corrupted (often singular) matrix.
+
+        Convert to contiguous int32, raising if any value does not fit.
+        """
+        import numpy as np
+        arr = np.ascontiguousarray(arr)
+        if arr.dtype != np.int32:
+            info = np.iinfo(np.int32)
+            if arr.size and (arr.max() > info.max or arr.min() < info.min):
+                raise ValueError(
+                    "index values do not fit in MUMPS 32-bit integers "
+                    "(MUMPS_INT); got dtype %s with range [%d, %d]"
+                    % (arr.dtype, arr.min(), arr.max()))
+            arr = arr.astype(np.int32)
+        return arr
 
 try:
     import mumps._smumps
