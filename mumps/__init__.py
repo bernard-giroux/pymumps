@@ -1,5 +1,4 @@
 import warnings
-import numpy as np
 
 __all__ = [
     'DMumpsContext',
@@ -172,15 +171,21 @@ class _MumpsBaseContext(object):
 
     def set_rhs(self, rhs):
         """Set the right hand side. This matrix will be modified in place."""
-        assert rhs.size == self.id.n or rhs.flags['F_CONTIGUOUS']
-        # if memory layout is 'F_CONTIGUOUS', we assume array is 2d
+        n = self.id.n
+        if rhs.ndim == 1:
+            if rhs.shape[0] != n:
+                raise ValueError(f"rhs length {rhs.shape[0]} does not match system size {n}")
+        elif rhs.ndim == 2:
+            if rhs.shape[0] != n:
+                raise ValueError(f"rhs.shape[0] ({rhs.shape[0]}) does not match system size {n}")
+            if not rhs.flags['F_CONTIGUOUS']:
+                raise ValueError("2D rhs must be Fortran-contiguous (column-major); use np.asfortranarray(rhs)")
+        else:
+            raise ValueError(f"rhs must be 1D or 2D, got {rhs.ndim}D")
         self._refs.update(rhs=rhs)
         self.id.rhs = self.cast_array(rhs)
-        if rhs.ndim == 2:
-            self.id.nrhs = rhs.shape[1]
-        else:
-            self.id.nrhs = 1
-        self.id.lrhs = self.id.n
+        self.id.nrhs = rhs.shape[1] if rhs.ndim == 2 else 1
+        self.id.lrhs = n
 
     def set_icntl(self, idx, val):
         """Set an icntl value.
